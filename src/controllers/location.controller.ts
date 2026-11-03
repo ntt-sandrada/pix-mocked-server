@@ -19,14 +19,23 @@ const parseLocId = (value: any): number => {
     return id;
 }
 
-const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/i;
+const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/i;
+
+const isDateTime = (value: any): boolean => {
+    const m = typeof value === 'string' ? RFC3339.exec(value) : null;
+    if (!m) { return false; }
+    const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number);
+    const [offH, offM] = [m[9], m[10]].map(v => Number(v ?? 0));
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return month >= 1 && month <= 12 && day >= 1 && day <= lastDay && hour < 24 && minute < 60 && second < 60 && offH < 24 && offM < 60;
+}
 
 const parseLocFilter = (qry: any = {}): LocGetFilter => {
     const errors: { [field: string]: string } = {};
 
     const dateTime = (field: string) => {
         const value = qry[field];
-        if (typeof value !== 'string' || !RFC3339.test(value) || isNaN(Date.parse(value))) { errors[field] = SCHEMA_ERROR; }
+        if (!isDateTime(value)) { errors[field] = SCHEMA_ERROR; }
         return value;
     }
 
@@ -45,7 +54,8 @@ const parseLocFilter = (qry: any = {}): LocGetFilter => {
 
     let txIdPresente: boolean = undefined;
     if (qry.txIdPresente !== undefined) {
-        txIdPresente = { true: true, false: false }[String(qry.txIdPresente)];
+        const value = String(qry.txIdPresente);
+        txIdPresente = value === 'true' ? true : value === 'false' ? false : undefined;
         if (txIdPresente === undefined) { errors.txIdPresente = SCHEMA_ERROR; }
     }
 

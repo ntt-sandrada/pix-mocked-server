@@ -264,6 +264,18 @@ describe('LOC', () => {
                 .expect((res: any) => expect(res.body).toMatchObject({ type: 'https://pix.bcb.gov.br/api/v2/error/PayloadLocationOperacaoInvalida', title: 'PayloadLocation inválido.', status: 400 }));
         });
 
+        it('POST /loc sem tipoCob → 400', async () => {
+            await request(app.getHttpServer()).post(`/loc`).send({}).set(...T).expect(400)
+                .expect((res: any) => expect(res.body.violacoes).toEqual([expect.objectContaining({ propriedade: 'loc.tipoCob' })]));
+        });
+
+        it.each([['valor'], ['chave']])('PUT /cob sem %s → 400', async (campo) => {
+            const payload: any = { chave, valor: { original: "1.00" } };
+            delete payload[campo];
+            await request(app.getHttpServer()).put(`/cob/${randomUUID().replace(/\-/g, '')}`).send(payload).set(...T).expect(400)
+                .expect((res: any) => expect(res.body.violacoes).toEqual(expect.arrayContaining([expect.objectContaining({ propriedade: `cob.${campo}` })])));
+        });
+
         it('POST e GET /loc/{id} retornam apenas campos do PayloadLocation', async () => {
             const { body } = await request(app.getHttpServer()).post(`/loc`).send({ tipoCob: TipoCob.vencimento }).set(...T).expect(201);
             expect(Object.keys(body).sort()).toEqual(['criacao', 'id', 'location', 'tipoCob']);
@@ -304,6 +316,9 @@ describe('LOC', () => {
                 [{ 'paginacao.itensPorPagina': 1001 }, 'loc.paginacao.itensPorPagina'],
                 [{ 'paginacao.paginaAtual': -1 }, 'loc.paginacao.paginaAtual'],
                 [{ txIdPresente: 'talvez' }, 'loc.txIdPresente'],
+                [{ txIdPresente: 'toString' }, 'loc.txIdPresente'],
+                [{ inicio: '2026-02-30T00:00:00Z', fim: new Date().toISOString() }, 'loc.inicio'],
+                [{ inicio: '2026-02-01T24:00:00Z', fim: new Date().toISOString() }, 'loc.inicio'],
                 [{ tipoCob: 'cobr' }, 'loc.tipoCob'],
             ])('query %p → 400 (%s)', async (query: any, propriedade) => {
                 const q = 'inicio' in query || Object.keys(query).length === 0 ? query : { ...periodo(), ...query };
