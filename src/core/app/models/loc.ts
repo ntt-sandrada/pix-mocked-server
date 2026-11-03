@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsNumber } from "class-validator"
+import { IsDefined, IsEnum, IsNotEmpty, IsNumber } from "class-validator"
 import { TipoCob } from "../models"
 
 export class LocID {
@@ -11,6 +11,7 @@ export interface ILocKey {
 }
 
 export class LocPutRequest {
+    @IsDefined({message: 'O campo $$ não respeita o schema.'})
     @IsNotEmpty({message: 'O campo $$ não respeita o schema.'})
     @IsEnum(TipoCob, {message: 'O campo $$ não respeita o schema.'})
     tipoCob: TipoCob
