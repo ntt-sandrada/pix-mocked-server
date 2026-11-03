@@ -70,12 +70,12 @@ describe('LOC', () => {
 
 
 
-    describe('/PUT', () => {
+    describe('/POST', () => {
 
         describe('400', () => {
             it('o campo tipoCob não respeita o schema.', async () => {
                 await request(app.getHttpServer())
-                    .put(`/loc`)
+                    .post(`/loc`)
                     .send({ IdOwner, tipoCob: 4 })
                     .set("mocked-token", "123-abc")
                     .expect(400)
@@ -86,7 +86,7 @@ describe('LOC', () => {
         describe('401', () => {
             it('Sem cabeçalho', async () => {
                 await request(app.getHttpServer())
-                    .put(`/loc`)
+                    .post(`/loc`)
                     .send({ IdOwner, tipoCob: TipoCob.imediato })
                     .expect(401)
                     .expect((res) => expect(JSON.parse(res.text)).toMatchObject({ status: 401 }));
@@ -94,7 +94,7 @@ describe('LOC', () => {
 
             it('Cabeçalho inválido', async () => {
                 await request(app.getHttpServer())
-                    .put(`/loc`)
+                    .post(`/loc`)
                     .send({ IdOwner, tipoCob: TipoCob.imediato })
                     .set("mocked-token", "xpto")
                     .expect(401)
@@ -102,40 +102,67 @@ describe('LOC', () => {
             });
         });
 
+        describe('201', () => {
+            it.each([TipoCob.imediato, TipoCob.vencimento])('tipoCob %s', async (tipoCob) => {
+                const res = await request(app.getHttpServer())
+                    .post(`/loc`)
+                    .send({ tipoCob })
+                    .set("mocked-token", "123-abc")
+                    .expect(201);
 
-        describe('200', () => {
-            it('Imediato', async () => {
+                expect(res.body).toMatchObject({ id: expect.any(Number), tipoCob, location: expect.any(String), criacao: expect.any(String) });
+                expect(res.headers['location']).toBe(`/loc/${res.body.id}`);
+
                 await request(app.getHttpServer())
-                    .put(`/loc`)
-                    .send({ IdOwner, tipoCob: TipoCob.imediato })
+                    .get(res.headers['location'])
                     .set("mocked-token", "123-abc")
                     .expect(200)
+                    .expect((r: any) => expect(r.body).toMatchObject({ id: res.body.id, tipoCob }));
             });
 
-            it('Vencimento', async () => {
-                await request(app.getHttpServer())
-                    .put(`/loc`)
-                    .send({ IdOwner, tipoCob: TipoCob.vencimento })
-                    .set("mocked-token", "123-abc")
-                    .expect(200)
+            it('ids distintos a cada criação', async () => {
+                const post = () => request(app.getHttpServer()).post(`/loc`).send({ tipoCob: TipoCob.imediato }).set("mocked-token", "123-abc").expect(201);
+                const a = await post();
+                const b = await post();
+                expect(a.body.id).not.toBe(b.body.id);
             });
         })
+    })
+
+    describe('/PUT (fora da spec BACEN)', () => {
+        it('PUT /loc → 404', async () => {
+            await request(app.getHttpServer())
+                .put(`/loc`)
+                .send({ tipoCob: TipoCob.imediato })
+                .set("mocked-token", "123-abc")
+                .expect(404);
+        });
+
+        it('PUT /loc/123 → 404', async () => {
+            await request(app.getHttpServer())
+                .put(`/loc/123`)
+                .send({ tipoCob: TipoCob.imediato })
+                .set("mocked-token", "123-abc")
+                .expect(404);
+        });
     })
 
 
 
     describe('/GET/{id}', () => {
-        describe('404', () => {
-            it('id não numérico', async () => {
-                const id = 'abc';
+        describe('400', () => {
+            it.each(['abc', '0', '-1', '1.5', '12abc'])('id inválido (%s)', async (id) => {
                 await request(app.getHttpServer())
                     .get(`/loc/${id}`)
                     .set("mocked-token", "123-abc")
-                    .expect(404)
-                    .expect((res: any) => expect(JSON.parse(res.text)).toMatchObject({ status: 404 }));
+                    .expect(400)
+                    .expect((res: any) => expect(JSON.parse(res.text)).toMatchObject({ status: 400, violacoes: [{ propriedade: 'loc.id' }] }));
             })
+        })
+
+        describe('404', () => {
             it('id inexistente', async () => {
-                const id = Math.round(Math.random() * 1000);
+                const id = 99999;
                 await request(app.getHttpServer())
                     .get(`/loc/${id}`)
                     .set("mocked-token", "123-abc")
@@ -148,9 +175,10 @@ describe('LOC', () => {
             it('/loc', async () => {
                 let itm: any = undefined;
                 await request(app.getHttpServer())
-                    .put(`/loc`)
+                    .post(`/loc`)
+                    .send({ tipoCob: TipoCob.imediato })
                     .set("mocked-token", "123-abc")
-                    .expect(200)
+                    .expect(201)
                     .then(v => itm = v.body);
 
                 await request(app.getHttpServer())
@@ -181,18 +209,19 @@ describe('LOC', () => {
 
 
     describe('/DELETE', () => {
-        describe('404', () => {
-            it('id não numerico', async () => {
-                const id = 'abc';
+        describe('400', () => {
+            it.each(['abc', '0', '-1', '1.5'])('id inválido (%s)', async (id) => {
                 await request(app.getHttpServer())
                     .delete(`/loc/${id}/txid`)
                     .set("mocked-token", "123-abc")
-                    .expect(404)
-                    .expect((res: any) => expect(JSON.parse(res.text)).toMatchObject({ status: 404 }));
+                    .expect(400)
+                    .expect((res: any) => expect(JSON.parse(res.text)).toMatchObject({ status: 400, violacoes: [{ propriedade: 'loc.id' }] }));
             })
+        });
 
+        describe('404', () => {
             it('id inexistente', async () => {
-                const id = Math.round(Math.random() * 1000);
+                const id = 99999;
                 await request(app.getHttpServer())
                     .delete(`/loc/${id}/txid`)
                     .set("mocked-token", "123-abc")
