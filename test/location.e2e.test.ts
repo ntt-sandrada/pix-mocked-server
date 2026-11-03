@@ -194,7 +194,7 @@ describe('LOC', () => {
                     .put(`/cob/${randomUUID().replace(/\-/g, '')}`)
                     .send({ chave, valor: { original: "1.00" } })
                     .set("mocked-token", "123-abc")
-                    .expect(200)
+                    .expect(201)
                     .then(v => itm = v.body)
 
 
@@ -237,7 +237,7 @@ describe('LOC', () => {
                     .put(`/cob/${randomUUID().replace(/\-/g, '')}`)
                     .send({ chave, valor: { original: "1.00" } })
                     .set("mocked-token", "123-abc")
-                    .expect(200)
+                    .expect(201)
                     .then(v => itm = v.body);
 
                 await request(app.getHttpServer())
@@ -247,6 +247,93 @@ describe('LOC', () => {
 
             });
 
+        });
+    });
+
+    describe('Conformidade BACEN', () => {
+        const T = ["mocked-token", "123-abc"] as const;
+        const periodo = () => ({ inicio: new Date(Date.now() - 3600_000).toISOString(), fim: new Date(Date.now() + 3600_000).toISOString() });
+        const novaCob = async () => (await request(app.getHttpServer()).put(`/cob/${randomUUID().replace(/\-/g, '')}`).send({ chave, valor: { original: "1.00" } }).set(...T).expect(201)).body;
+
+        it('POST /loc 400 usa type/title PayloadLocation', async () => {
+            await request(app.getHttpServer())
+                .post(`/loc`)
+                .send({ tipoCob: 'xpto' })
+                .set(...T)
+                .expect(400)
+                .expect((res: any) => expect(res.body).toMatchObject({ type: 'https://pix.bcb.gov.br/api/v2/error/PayloadLocationOperacaoInvalida', title: 'PayloadLocation inválido.', status: 400 }));
+        });
+
+        it('POST e GET /loc/{id} retornam apenas campos do PayloadLocation', async () => {
+            const { body } = await request(app.getHttpServer()).post(`/loc`).send({ tipoCob: TipoCob.vencimento }).set(...T).expect(201);
+            expect(Object.keys(body).sort()).toEqual(['criacao', 'id', 'location', 'tipoCob']);
+            const get = await request(app.getHttpServer()).get(`/loc/${body.id}`).set(...T).expect(200);
+            expect(get.body).toEqual(body);
+        });
+
+        it('DELETE /loc/{id}/txid retorna PayloadLocation sem txid e desvincula a cob', async () => {
+            const cob = await novaCob();
+            await request(app.getHttpServer())
+                .delete(`/loc/${cob.loc.id}/txid`)
+                .set(...T)
+                .expect(200)
+                .expect((res: any) => {
+                    expect(res.body).toMatchObject({ id: cob.loc.id, tipoCob: TipoCob.imediato, location: expect.any(String), criacao: expect.any(String) });
+                    expect(res.body.txid).toBeUndefined();
+                    expect(res.body.uuid).toBeUndefined();
+                });
+
+            await request(app.getHttpServer()).get(`/loc/${cob.loc.id}`).set(...T).expect(200)
+                .expect((res: any) => expect(res.body.txid).toBeUndefined());
+            await request(app.getHttpServer()).get(`/cob/${cob.txid}`).set(...T).expect(200)
+                .expect((res: any) => { expect(res.body.loc).toBeUndefined(); expect(res.body.location).toBeUndefined(); });
+        });
+
+        it('DELETE /loc/{id}/txid em location sem cobrança → 200', async () => {
+            const { body } = await request(app.getHttpServer()).post(`/loc`).send({ tipoCob: TipoCob.imediato }).set(...T).expect(201);
+            await request(app.getHttpServer()).delete(`/loc/${body.id}/txid`).set(...T).expect(200)
+                .expect((res: any) => expect(res.body).toEqual(body));
+        });
+
+        describe('GET /loc', () => {
+            it.each([
+                [{}, 'loc.inicio'],
+                [{ inicio: new Date().toISOString() }, 'loc.fim'],
+                [{ inicio: 'ontem', fim: new Date().toISOString() }, 'loc.inicio'],
+                [{ 'paginacao.itensPorPagina': 0 }, 'loc.paginacao.itensPorPagina'],
+                [{ 'paginacao.itensPorPagina': 1001 }, 'loc.paginacao.itensPorPagina'],
+                [{ 'paginacao.paginaAtual': -1 }, 'loc.paginacao.paginaAtual'],
+                [{ txIdPresente: 'talvez' }, 'loc.txIdPresente'],
+                [{ tipoCob: 'cobr' }, 'loc.tipoCob'],
+            ])('query %p → 400 (%s)', async (query: any, propriedade) => {
+                const q = 'inicio' in query || Object.keys(query).length === 0 ? query : { ...periodo(), ...query };
+                await request(app.getHttpServer()).get(`/loc`).query(q).set(...T).expect(400)
+                    .expect((res: any) => expect(res.body.violacoes).toEqual(expect.arrayContaining([expect.objectContaining({ propriedade })])));
+            });
+
+            it('paginacao.*, txIdPresente e tipoCob via query string; todo item tem location', async () => {
+                await request(app.getHttpServer()).post(`/loc`).send({ tipoCob: TipoCob.imediato }).set(...T).expect(201);
+                await novaCob();
+
+                const { body } = await request(app.getHttpServer())
+                    .get(`/loc`)
+                    .query({ ...periodo(), 'paginacao.itensPorPagina': 1, 'paginacao.paginaAtual': 0 })
+                    .set(...T)
+                    .expect(200);
+                expect(body.loc).toHaveLength(1);
+                expect(body.parametros.paginacao).toMatchObject({ paginaAtual: 0, itensPorPagina: 1 });
+                expect(body.parametros.paginacao.quantidadeTotalDeItens).toBeGreaterThanOrEqual(2);
+
+                const all = (await request(app.getHttpServer()).get(`/loc`).query(periodo()).set(...T).expect(200)).body.loc;
+                all.forEach((l: any) => { expect(l.location).toEqual(expect.any(String)); expect(l.uuid).toBeUndefined(); });
+
+                const semTxid = (await request(app.getHttpServer()).get(`/loc`).query({ ...periodo(), txIdPresente: 'false' }).set(...T).expect(200)).body.loc;
+                expect(semTxid.length).toBeGreaterThan(0);
+                semTxid.forEach((l: any) => expect(l.txid).toBeUndefined());
+
+                const cobv = (await request(app.getHttpServer()).get(`/loc`).query({ ...periodo(), tipoCob: 'cobv' }).set(...T).expect(200)).body.loc;
+                cobv.forEach((l: any) => expect(l.tipoCob).toBe('cobv'));
+            });
         });
     });
 })

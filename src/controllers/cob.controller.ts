@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Headers, Param, Patch, Post, Put, Query, Req, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Header, Headers, HttpCode, Param, Patch, Post, Put, Query, Req, UseInterceptors } from '@nestjs/common';
 import { PSP } from '../core/app/psp';
 import { HttpInterceptor } from '../http.interceptor';
 import { CobGetFilter, CobPatchRequest, CobPutRequest } from '../core/app/models/cob';
@@ -11,6 +11,7 @@ export class CobController {
   constructor(private readonly pspService: PSP) { }
 
   @Put(":txid")
+  @HttpCode(201)
   async add(@Body() data: CobPutRequest, @Param("txid") txid, @Headers() headers) {
     const IdOwner = headers["IdOwner"];
     const itm: PixRequest<CobPutRequest> = { IdOwner, txid, data }

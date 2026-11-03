@@ -147,7 +147,7 @@ describe('COB', () => {
           .put(`/cob/${randomUUID().replace(/\-/g, '')}`)
           .send({ chave, valor: { original: "1.00" } })
           .set("mocked-token", "123-abc")
-          .expect(200)
+          .expect(201)
           .expect((res: any) => expect(JSON.parse(res.text)).toMatchObject({ chave, calendario: { expiracao: 86400 } }))
       });
     })
@@ -193,7 +193,7 @@ describe('COB', () => {
           .put(`/cob/${txid}`)
           .send({ chave, valor: { original: "1.00" } })
           .set("mocked-token", "123-abc")
-          .expect(200);
+          .expect(201);
 
         await request(app.getHttpServer())
           .get(`/cob/${txid}`)
@@ -207,7 +207,7 @@ describe('COB', () => {
           .put(`/cob/${txid}`)
           .send({ chave, valor: { original: "1.00" } })
           .set("mocked-token", "123-abc")
-          .expect(200);
+          .expect(201);
 
         await request(app.getHttpServer())
           .patch(`/cob/${txid}`)
@@ -250,7 +250,7 @@ describe('COB', () => {
         .put(`/cob/${txid}`)
         .send({ chave, valor: { original: "1.00" } })
         .set("mocked-token", "123-abc")
-        .expect(200);
+        .expect(201);
     })
 
     describe('400', () => {

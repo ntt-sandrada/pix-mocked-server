@@ -326,7 +326,8 @@ export class PSP {
             //Left Join Loc x LocCob
             return _locs.map(m => {
                 const _cob = _cobs.find(f => f.id === m.id);
-                return _cob ? { ...m, txid: _cob.txid, location: `pix.example.com/qr/${m.uuid}` } : m;
+                const location = `pix.example.com/qr/${m.uuid}`;
+                return _cob ? { ...m, txid: _cob.txid, location } : { ...m, location };
             })
         });
 
