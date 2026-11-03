@@ -21,7 +21,7 @@ export class HttpInterceptor implements NestInterceptor {
 
 
     private ServerErrorTypes = {
-        400: (prefix: string, detail: string, violacoes: { razao: string, propriedade: string }[]) => (this.handleError(`https://pix.bcb.gov.br/api/v2/error/${prefix}OperacaoInvalida`, 'Payload Inválido', detail, 400, violacoes)),
+        400: (prefix: string, detail: string, violacoes: { razao: string, propriedade: string }[], title: string = 'Payload Inválido') => (this.handleError(`https://pix.bcb.gov.br/api/v2/error/${prefix}OperacaoInvalida`, title, detail, 400, violacoes)),
         401: () => this.handleError("https://pix.bcb.gov.br/api/v2/error/AcessoNegado", "Acesso Negado", "Access Token inválido.", 401, []),
         403: (detail: string, violacoes: { razao: string, propriedade: string }[]) => (this.handleError(`https://pix.bcb.gov.br/api/v2/error/AcessoNegado`, `Acesso Negado`, detail, 403, violacoes)),
         404: () => (this.handleError(`https://pix.bcb.gov.br/api/v2/error/NaoEncontrado`, `Não Encontrado`, 'Entidade não encontrada.', 404, [])),
@@ -49,7 +49,7 @@ export class HttpInterceptor implements NestInterceptor {
                 catchError((err: HttpException): Observable<any> => {
                     const statusHandle = {
                         400: () => {
-                            const endpoint = request['url'].split('/')[1];
+                            const endpoint = request['url'].split('?')[0].split('/')[1];
 
                             const handle: (msgs: any) => Observable<any> = {
                                 'cob': (msgs: { [key: string]: string }) => {
@@ -62,7 +62,7 @@ export class HttpInterceptor implements NestInterceptor {
                                 },
                                 'loc': (msgs: { [key: string]: string }) => {
                                     const violacoes = Object.keys(msgs).map((key: string) => ({ propriedade: `${endpoint}.${key}`, razao: msgs[key].replace('$$', `${endpoint}.${key}`) }));
-                                    throw new BadRequestException(this.ServerErrorTypes[err.getStatus()]('Location', "O Location não respeita o schema.", violacoes));
+                                    throw new BadRequestException(this.ServerErrorTypes[err.getStatus()]('PayloadLocation', "O Location não respeita o schema.", violacoes, 'PayloadLocation inválido.'));
                                 },
 
                                 'rec': (msgs: { [key: string]: string }) => {
