@@ -111,7 +111,13 @@ describe('LOC', () => {
                     .expect(201);
 
                 expect(res.body).toMatchObject({ id: expect.any(Number), tipoCob, location: expect.any(String), criacao: expect.any(String) });
-                expect(res.headers['location']).toBe(`pix.example.com/api/loc/${res.body.id}`);
+                expect(res.headers['location']).toBe(`/loc/${res.body.id}`);
+
+                await request(app.getHttpServer())
+                    .get(res.headers['location'])
+                    .set("mocked-token", "123-abc")
+                    .expect(200)
+                    .expect((r: any) => expect(r.body).toMatchObject({ id: res.body.id, tipoCob }));
             });
 
             it('ids distintos a cada criação', async () => {

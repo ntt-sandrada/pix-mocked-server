@@ -21,7 +21,7 @@ export class LocationController {
     async create(@Body() data: LocPutRequest, @Headers() headers, @Res({ passthrough: true }) res?: Response): Promise<LocGetResponse> {
         const IdOwner = headers["IdOwner"];
         const loc = await this.pspService.addLoc({ IdOwner, ...data });
-        res?.setHeader('location', `pix.example.com/api/loc/${loc.id}`);
+        res?.setHeader('location', `/loc/${loc.id}`);
         return loc;
     }
 
