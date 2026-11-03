@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { LocationController } from "../../src/controllers/location.controller";
 import { PSP } from "../../src/core/app/psp";
@@ -81,6 +82,13 @@ describe('LocationController', () => {
                 const cob = await ctrlCob.add({ valor: { original: "10.00" }, chave }, randomUUID().replace(/\-/g, ''), { IdOwner });
                 await expect(ctrl.read({ id: cob.loc.id }, { IdOwner })).resolves.toMatchObject({ tipoCob: TipoCob.imediato, txid: cob.txid });
             });
+        });
+    });
+
+    describe('ID INVÁLIDO', () => {
+        it.each(['abc', '0', '-1', '1.5', '', undefined])('read/remove com id %p → 400', async (id) => {
+            await expect(ctrl.read({ id }, { IdOwner })).rejects.toBeInstanceOf(BadRequestException);
+            await expect(ctrl.remove({ id }, { IdOwner })).rejects.toBeInstanceOf(BadRequestException);
         });
     });
 
