@@ -7,7 +7,8 @@ import { MESSAGES } from "../../libs/messages";
 import { CobGetResponse, CobPatchRequest, CobPutRequest, CobPutResponse, CobGetFilter, CobPatchResponse } from "./models/cob";
 import { LocGetResponse, LocGetFilter, LocID, LocPutRequest, LocPutResponse } from "./models/loc";
 import { CobVGetFilter, CobVGetResponse, CobVPatchRequest, CobVPatchResponse, CobVPutRequest, CobVPutResponse, CobVValor } from "./models/cobv";
-import { CobRPutRequest, CobRPutResponse } from "./models/cobr";
+import { CobRGetFilter, CobRGetResponse, CobRPatchRequest, CobRPatchResponse, CobRPutRequest, CobRPutResponse, ICobRQueryResponse, StatusCobR, StatusTentativa, TipoTentativa } from "./models/cobr";
+import { OperacaoInvalidaException } from "../../libs/errors";
 import { PoliticaRetentativa, RecPostRequest, RecRequest } from "./models/rec";
 import { owners } from '../../data/db.json'
 
@@ -98,9 +99,134 @@ export class PSP {
     }
 
     async addCobR(itm: PixRequest<CobRPutRequest>): Promise<CobRPutResponse> {
+        if (await this.cobR.read(itm.IdOwner, { txid: itm.txid })) {
+            throw new OperacaoInvalidaException('O txid informado já está sendo utilizado por outra cobrança.');
+        }
 
+        const agora = (new Date()).toJSON();
+        const curr: CobRGetResponse = {
+            ...itm.data,
+            idRec: itm.data.idRec,
+            txid: itm.txid,
+            calendario: { criacao: agora.substring(0, 10), dataDeVencimento: itm.data.calendario.dataDeVencimento },
+            ajusteDiaUtil: itm.data.ajusteDiaUtil ?? true,
+            status: StatusCobR.Criada,
+            politicaRetentativa: itm.data.idRec.charAt(1) === 'N' ? PoliticaRetentativa.NaoPermite : PoliticaRetentativa.Permite,
+            atualizacao: [{ status: StatusCobR.Criada, data: agora }]
+        };
 
-        return null;
+        await this.cobR.add(itm.IdOwner, curr);
+        return await this.readCobR({ IdOwner: itm.IdOwner, txid: itm.txid });
+    }
+
+    async readCobR(key: PixKey): Promise<CobRGetResponse> {
+        return await this.cobR.read(key.IdOwner, { txid: key.txid });
+    }
+
+    async listCobR(filter: CobRGetFilter & { IdOwner: string }): Promise<ICobRQueryResponse> {
+        const paginaAtual = Number(filter['paginacao.paginaAtual'] ?? filter.paginacao?.paginaAtual ?? 0);
+        const itensPorPagina = Number(filter['paginacao.itensPorPagina'] ?? filter.paginacao?.itensPorPagina ?? 100);
+        const [inicio, fim] = [new Date(filter.inicio), new Date(filter.fim)];
+        const documento = filter.cpf || filter.cnpj;
+
+        const ls: CobRGetResponse[] = await this.cobR.list(filter.IdOwner);
+        const cobsr: CobRGetResponse[] = [];
+
+        for (const c of ls) {
+            const criacao = new Date(c.atualizacao[0].data);
+            if (criacao < inicio || criacao > fim) { continue; }
+            if (filter.idRec && c.idRec !== filter.idRec) { continue; }
+            if (filter.status && c.status !== filter.status) { continue; }
+            if (documento) {
+                const rec = await this.rec?.read(filter.IdOwner, { idRec: c.idRec });
+                const devedor = rec?.vinculo?.devedor;
+                if (!devedor || (devedor.cpf || devedor.cnpj) !== documento) { continue; }
+            }
+            cobsr.push(c);
+        }
+
+        const ini = paginaAtual * itensPorPagina;
+        return {
+            parametros: {
+                inicio: filter.inicio,
+                fim: filter.fim,
+                ...(filter.idRec ? { idRec: filter.idRec } : {}),
+                ...(filter.cpf ? { cpf: filter.cpf } : {}),
+                ...(filter.cnpj ? { cnpj: filter.cnpj } : {}),
+                ...(filter.status ? { status: filter.status } : {}),
+                paginacao: {
+                    paginaAtual,
+                    itensPorPagina,
+                    quantidadeDePaginas: Math.ceil(cobsr.length / itensPorPagina),
+                    quantidadeTotalDeItens: cobsr.length
+                }
+            },
+            cobsr: cobsr.slice(ini, ini + itensPorPagina)
+        };
+    }
+
+    async editCobR(itm: PixRequest<CobRPatchRequest>): Promise<CobRPatchResponse> {
+        const curr = await this.readCobR(itm);
+        if (!curr) { return undefined; }
+
+        if (itm.data.status === StatusCobR.Cancelada) {
+            if (curr.status !== StatusCobR.Criada && curr.status !== StatusCobR.Ativa) {
+                throw new OperacaoInvalidaException(`Não é possível cancelar uma cobrança com status ${curr.status}.`);
+            }
+
+            const agora = (new Date()).toJSON();
+            const tentativas = curr.tentativas?.map(t =>
+                (t.status === StatusTentativa.Solicitada || t.status === StatusTentativa.Agendada)
+                    ? { ...t, status: StatusTentativa.Cancelada, atualizacao: [...t.atualizacao, { status: StatusTentativa.Cancelada, data: agora }] }
+                    : t
+            );
+
+            await this.cobR.patch(itm.IdOwner, { txid: itm.txid }, {
+                status: StatusCobR.Cancelada,
+                atualizacao: [...curr.atualizacao, { status: StatusCobR.Cancelada, data: agora }],
+                ...(tentativas ? { tentativas } : {}),
+                encerramento: {
+                    cancelamento: {
+                        solicitante: 'USUARIO_RECEBEDOR',
+                        codigo: 'SLCR',
+                        descricao: 'Cancelamento de agendamento solicitado pelo usuário recebedor'
+                    }
+                }
+            });
+        }
+
+        return await this.readCobR(itm);
+    }
+
+    async retentativaCobR(key: PixKey, dataLiquidacao: string): Promise<CobRGetResponse> {
+        const curr = await this.readCobR(key);
+        if (!curr) { return undefined; }
+
+        if (curr.politicaRetentativa !== PoliticaRetentativa.Permite) {
+            throw new OperacaoInvalidaException('A política configurada na recorrência não permite retentativa de cobrança.');
+        }
+        if (curr.status !== StatusCobR.Criada && curr.status !== StatusCobR.Ativa) {
+            throw new OperacaoInvalidaException(`Não é possível solicitar retentativa de uma cobrança com status ${curr.status}.`);
+        }
+        const retentativas = (curr.tentativas || []).filter(t => t.tipo === TipoTentativa.NaoAgendada);
+        if (retentativas.length >= 3) {
+            throw new OperacaoInvalidaException('O limite de retentativas da cobrança foi atingido.');
+        }
+
+        const agora = new Date();
+        const ispb = owners.find(f => f.id === key.IdOwner)?.ISPB || '00000000';
+        const endToEndId = `E${ispb}${agora.toJSON().replace(/\D/g, '').substring(0, 12)}${randomUUID().replace(/\-/g, '').substring(0, 11)}`;
+
+        const tentativa = {
+            dataLiquidacao,
+            tipo: TipoTentativa.NaoAgendada,
+            status: StatusTentativa.Solicitada,
+            endToEndId,
+            atualizacao: [{ status: StatusTentativa.Solicitada, data: agora.toJSON() }]
+        };
+
+        await this.cobR.patch(key.IdOwner, { txid: key.txid }, { tentativas: [...(curr.tentativas || []), tentativa] });
+        return await this.readCobR(key);
     }
 
     async addCobV(itm: PixRequest<CobVPutRequest>): Promise<CobVPutResponse> {

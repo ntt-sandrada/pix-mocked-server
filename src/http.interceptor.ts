@@ -2,6 +2,7 @@ import { CallHandler, ExecutionContext, Injectable, NestInterceptor, HttpExcepti
 import { randomUUID } from "crypto";
 import { catchError, Observable, tap } from "rxjs";
 import { owners } from './data/db.json'
+import { OperacaoInvalidaException } from './libs/errors';
 
 
 @Injectable()
@@ -65,6 +66,13 @@ export class HttpInterceptor implements NestInterceptor {
                                     throw new BadRequestException(this.ServerErrorTypes[err.getStatus()]('PayloadLocation', "O Location não respeita o schema.", violacoes, 'PayloadLocation inválido.'));
                                 },
 
+                                'cobr': (msgs: { [key: string]: string }) => {
+                                    if (err instanceof OperacaoInvalidaException) {
+                                        throw new BadRequestException(this.ServerErrorTypes[400]('CobR', err.detail, [], 'Operação inválida.'));
+                                    }
+                                    const violacoes = Object.keys(msgs).map((key: string) => ({ propriedade: `${endpoint}.${key}`, razao: msgs[key].replace('$$', `${endpoint}.${key}`) }));
+                                    throw new BadRequestException(this.ServerErrorTypes[err.getStatus()]('CobR', "A cobrança não respeita o schema.", violacoes, 'Operação inválida.'));
+                                },
                                 'rec': (msgs: { [key: string]: string }) => {
                                     const violacoes = Object.keys(msgs).map((key: string) => ({ propriedade: `${endpoint}.${key}`, razao: msgs[key].replace('$$', `${endpoint}.${key}`) }));
                                     throw new BadRequestException(this.ServerErrorTypes[err.getStatus()]('Rec', "A recorrência não respeita o schema.", violacoes));

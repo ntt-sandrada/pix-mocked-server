@@ -1,130 +1,160 @@
-import { IsNotEmpty, IsNotEmptyObject, IsNumberString, MaxLength, ValidateNested } from "class-validator"
-import { Chave, ICriacao, Expiracao, IInfoAdicional, Pessoa, PixID, ModalidadeAlteracao, Situacao, PixRevisao, Vencimento, DadosPessoa, DadosConta } from "../models"
+import { IsBoolean, IsDateString, IsDefined, IsEnum, IsIn, IsNotEmpty, IsNotEmptyObject, IsNumberString, Length, MaxLength, ValidateNested } from "class-validator"
 import { Type } from "class-transformer"
-import { IntersectionType } from '@nestjs/swagger';
-import { IsCNPJValid, IsCPFValid, IsDICTExists, IsDICTValid, MinStringNumber } from "../../../validators/custom-validators";
-import { LocID, LocGetRequest } from "./loc";
+import { DadosPessoa, TipoConta, Vencimento } from "../models"
+import { IsCNPJValid, IsCPFValid, IsIDRec, MinStringNumber } from "../../../validators/custom-validators";
 import { PoliticaRetentativa } from "./rec";
+
+const SCHEMA_ERROR = 'O campo $$ não respeita o schema.';
+const OBJECT_SCHEMA_ERROR = 'O objeto $$ não respeita o schema.';
+
+export enum StatusCobR {
+    Criada = "CRIADA",
+    Ativa = "ATIVA",
+    Concluida = "CONCLUIDA",
+    Expirada = "EXPIRADA",
+    Rejeitada = "REJEITADA",
+    Cancelada = "CANCELADA"
+}
+
+export enum TipoTentativa {
+    Agendada = "AGND",
+    NaoAgendada = "NTAG",
+    RetentativaIntradia = "RIFL"
+}
+
+export enum StatusTentativa {
+    Solicitada = "SOLICITADA",
+    Agendada = "AGENDADA",
+    Paga = "PAGA",
+    Cancelada = "CANCELADA",
+    Rejeitada = "REJEITADA",
+    Expirada = "EXPIRADA"
+}
 
 /** 	
 Todos os campos que indicam valores monetários obedecem ao pattern \d{1,10}.\d{2}. O separador decimal é o caractere ponto. Não é aplicável utilizar separador de milhar. Exemplos de valores aderentes ao padrão: “1.00”, “123.99”, “123456789.23" */
-export class Valor {
-    @IsNotEmpty({ message: 'O campo $$ não respeita o schema.' })
-    @IsNumberString({}, { message: 'O campo $$ não respeita o schema.' })
+export class CobRValor {
+    @IsNotEmpty({ message: SCHEMA_ERROR })
+    @IsNumberString({}, { message: SCHEMA_ERROR })
     @MinStringNumber(0.01, { message: 'O campo $$ é zero.' })
     original: string
 }
 
-export class Alteracao {
-    /** Trata-se de um campo que determina se o valor final do documento pode ser alterado pelo pagador. Na ausência desse campo, assume-se que não se pode alterar o valor do documento de cobrança, ou seja, assume-se o valor 0. Se o campo estiver presente e com valor 1, então está determinado que o valor final da cobrança pode ter seu valor alterado pelo pagador. */
-    modalidadeAlteracao?: ModalidadeAlteracao
+export class CobRRecebedor {
+    @IsDefined({ message: SCHEMA_ERROR })
+    @IsNotEmpty({ message: SCHEMA_ERROR })
+    @MaxLength(20, { message: SCHEMA_ERROR })
+    conta: string
+    @IsDefined({ message: SCHEMA_ERROR })
+    @IsEnum(TipoConta, { message: SCHEMA_ERROR })
+    tipoConta: TipoConta
+    @MaxLength(4, { message: SCHEMA_ERROR })
+    agencia?: string
 }
-
-export class Retirada {
-    retirada?: any
-}
-
-
-export enum StatusCobR{
-    Aprovada = "APROVADA",
-    Cancelada = "CANCELADA",
-    Criada = "CRIADA",
-    Expirada = "EXPIRADA",
-    Rejeitada = "REJEITADA"
-}
-
-
-export class CobRGetResponse implements  PixID {
-    idrec: string
-    txid: string
-
-    calendario: {
-        dataCriacao: string,
-        dataVencimento: string
-    }
-    valor:string
-    status: StatusCobR
-    politicaRetentativa: PoliticaRetentativa
-    
-    loc: LocGetRequest
-    location: string
-    devedor: Pessoa
-    solicitacaoPagador: string
-    infoAdicionais: IInfoAdicional[]
-}
-
-export class CobRValor extends IntersectionType(Valor, Alteracao, Retirada)
-{
-
-}
-
-
 
 export class CobRPutRequest {
-    @IsNotEmpty({ message: 'O campo $$ não respeita o schema.' })
+    @IsDefined({ message: SCHEMA_ERROR })
+    @Length(29, 29, { message: SCHEMA_ERROR })
+    @IsIDRec({ message: SCHEMA_ERROR })
     idRec: string
-    @MaxLength(140, { message: 'O campo $$ não respeita o schema.' })
-    infoAdicional: string
-    @ValidateNested({})
+
+    @MaxLength(140, { message: SCHEMA_ERROR })
+    infoAdicional?: string
+
+    @IsDefined({ message: OBJECT_SCHEMA_ERROR })
+    @IsNotEmptyObject({ nullable: false }, { message: OBJECT_SCHEMA_ERROR })
+    @ValidateNested({ message: OBJECT_SCHEMA_ERROR })
     @Type(() => Vencimento)
     calendario: Vencimento
 
-    @ValidateNested({})
+    @IsDefined({ message: OBJECT_SCHEMA_ERROR })
+    @IsNotEmptyObject({ nullable: false }, { message: OBJECT_SCHEMA_ERROR })
+    @ValidateNested({ message: OBJECT_SCHEMA_ERROR })
+    @Type(() => CobRValor)
+    valor: CobRValor
+
+    @IsBoolean({ message: SCHEMA_ERROR })
+    ajusteDiaUtil?: boolean
+
+    @IsDefined({ message: OBJECT_SCHEMA_ERROR })
+    @IsNotEmptyObject({ nullable: false }, { message: OBJECT_SCHEMA_ERROR })
+    @ValidateNested({ message: OBJECT_SCHEMA_ERROR })
+    @Type(() => CobRRecebedor)
+    recebedor: CobRRecebedor
+
+    @ValidateNested({ message: OBJECT_SCHEMA_ERROR })
     @Type(() => DadosPessoa)
-    dadosDevedor: DadosPessoa
-    @ValidateNested({})
-    @Type(() => DadosConta)
-    contaRecebedor: DadosConta
+    devedor?: DadosPessoa
+
+    tributo?: any
 }
 
 export class CobRPatchRequest {
-    @ValidateNested({})
-    @Type(() => LocID)
-    loc?: LocID
-    @ValidateNested({})
-    @Type(() => CobRValor)
-    valor?: CobRValor
-    @ValidateNested()
-    @Type(() => Expiracao)
-    calendario?: Expiracao
-    @ValidateNested({})
-    @Type(() => Pessoa)
-    devedor?: Pessoa
-    solicitacaoPagador?: string
-    status?: "REMOVIDA_PELO_USUARIO_RECEBEDOR"
+    @IsIn([StatusCobR.Cancelada], { message: SCHEMA_ERROR })
+    status?: StatusCobR.Cancelada
 }
 
-export class CobRPatchResponse extends CobRGetResponse {
-
+export interface ICobRAtualizacao {
+    status: StatusCobR
+    data: string
 }
 
-
-export class CobRPutResponse extends CobRGetResponse {
-
+export interface ICobRTentativa {
+    dataLiquidacao: string
+    tipo: TipoTentativa
+    status: StatusTentativa
+    endToEndId: string
+    atualizacao: { status: StatusTentativa, data: string }[]
 }
 
-export interface ICobRPatchResponse extends CobRGetResponse {
-
-}
-
-
-export interface ICobRQueryRequest {
-    inicio: string,
-    fim: string,
-    cpf?: string,
-    cnpj?: string,
-    locationPresente?: boolean,
-    status: string,
-    paginacao: {
-        paginaAtual: number,
-        itensPorPagina: number
+export class CobRGetResponse {
+    idRec: string
+    txid: string
+    infoAdicional?: string
+    calendario: { criacao: string, dataDeVencimento: string }
+    valor: CobRValor
+    ajusteDiaUtil: boolean
+    recebedor: CobRRecebedor
+    devedor?: DadosPessoa
+    tributo?: any
+    status: StatusCobR
+    politicaRetentativa: PoliticaRetentativa
+    atualizacao: ICobRAtualizacao[]
+    tentativas?: ICobRTentativa[]
+    encerramento?: {
+        cancelamento?: { solicitante: string, codigo: string, descricao: string }
     }
+}
+
+export class CobRPutResponse extends CobRGetResponse { }
+
+export class CobRPatchResponse extends CobRGetResponse { }
+
+export class CobRGetFilter {
+    @IsDefined({ message: SCHEMA_ERROR })
+    @IsDateString({}, { message: SCHEMA_ERROR })
+    inicio: string
+    @IsDefined({ message: SCHEMA_ERROR })
+    @IsDateString({}, { message: SCHEMA_ERROR })
+    fim: string
+    idRec?: string
+    @IsCPFValid({ message: SCHEMA_ERROR })
+    cpf?: string
+    @IsCNPJValid({ message: SCHEMA_ERROR })
+    cnpj?: string
+    status?: string
+    convenio?: string
+    paginacao?: { paginaAtual: number, itensPorPagina: number }
 }
 
 export interface ICobRQueryResponse {
     parametros: {
         inicio: string,
         fim: string,
+        idRec?: string,
+        cpf?: string,
+        cnpj?: string,
+        status?: string,
         paginacao: {
             paginaAtual: number,
             itensPorPagina: number,
@@ -132,17 +162,5 @@ export interface ICobRQueryResponse {
             quantidadeTotalDeItens: number
         }
     },
-    cobs: { $ref: string }[]
-}
-
-export class CobRGetFilter {
-    inicio: string
-    fim: string
-    @IsCPFValid({ message: 'O campo $$ não respeita o schema.' })
-    cpf?: string
-    @IsCNPJValid({ message: 'O campo $$ não respeita o schema.' })
-    cnpj?: string
-    paginacao?: { paginaAtual: number, itensPorPagina: number }
-    status?: Situacao
-    locationPresente?: boolean
+    cobsr: CobRGetResponse[]
 }

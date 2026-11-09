@@ -1,27 +1,27 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PSP } from '../../src/core/app/psp';
 import { randomUUID } from 'crypto';
 import { MemoryDB } from '../../src/libs/fakedb';
-import { correntistas } from '../../src/data/db.json'
 import { CobRController } from '../../src/controllers/cobr.controller';
+import {
+  CobRPutRequest,
+  StatusCobR,
+  StatusTentativa,
+  TipoTentativa,
+} from '../../src/core/app/models/cobr';
+import { TipoConta } from '../../src/core/app/models';
+import { PoliticaRetentativa } from '../../src/core/app/models/rec';
+import { OperacaoInvalidaException } from '../../src/libs/errors';
+
+const amanha = () => new Date(Date.now() + 86400000).toJSON().substring(0, 10);
 
 describe('CobRController', () => {
   let ctrl: CobRController;
 
-
   beforeAll(async () => {
-    const cst = MemoryDB.create("CORRENTISTAS", ['chave', 'cpfcnpj']);
-
-    MemoryDB.create("COB", ['txid']);
-    MemoryDB.create("COB_HIST", ['id']);
-
-    MemoryDB.create("COBR", ['txid']);
-
-
-    MemoryDB.create("LOCATIONS", ['id', 'uuid']);
-    MemoryDB.create("LOC_COB", ['id', 'txid']);
-
-    await Promise.all(correntistas.map(c => cst.add('DEV', c)));
+    MemoryDB.create('COBR', ['txid']);
+    MemoryDB.create('REC', ['idRec']);
 
     const app: TestingModule = await Test.createTestingModule({
       controllers: [CobRController],
@@ -32,149 +32,182 @@ describe('CobRController', () => {
   });
 
   let IdOwner: string;
+  let txid: string;
+  let body: CobRPutRequest;
 
   beforeEach(async () => {
     IdOwner = randomUUID();
+    txid = randomUUID().replace(/\-/g, '');
+    body = {
+      idRec: 'RR1234567820240115abcdefghijk',
+      calendario: { dataDeVencimento: amanha() },
+      valor: { original: '106.07' },
+      recebedor: {
+        agencia: '9708',
+        conta: '012682',
+        tipoConta: TipoConta.Corrente,
+      },
+    };
   });
 
-  it('CHECK', ()=>{
-    expect(1).toBe(1);
-  })
+  describe('ADD', () => {
+    it('success', async () => {
+      await expect(ctrl.add(body, txid, { IdOwner })).resolves.toMatchObject({
+        idRec: body.idRec,
+        txid,
+        status: StatusCobR.Criada,
+        ajusteDiaUtil: true,
+        politicaRetentativa: PoliticaRetentativa.Permite,
+        calendario: { dataDeVencimento: body.calendario.dataDeVencimento },
+        atualizacao: [{ status: StatusCobR.Criada }],
+      });
+    });
 
-  // describe('CREATE', () => {
-  //   it('Success', async () => await expect(ctrl.create({ chave, valor: { original: "10.00" } }, { IdOwner })).resolves.toMatchObject({ chave, loc: { tipoCob: TipoCob.imediato } }));
-  // });
+    it('txid inválido', () =>
+      expect(ctrl.add(body, 'abc', { IdOwner })).rejects.toBeInstanceOf(
+        BadRequestException,
+      ));
 
+    it('txid duplicado', async () => {
+      await ctrl.add(body, txid, { IdOwner });
+      await expect(ctrl.add(body, txid, { IdOwner })).rejects.toBeInstanceOf(
+        OperacaoInvalidaException,
+      );
+    });
+  });
 
-  // describe('EDIT', () => {
-  //   it('success', async () => {
-  //     await ctrl.add({ chave, valor: { original: "1.00" } }, txid, { IdOwner });
-  //     await expect(ctrl.edit({ valor: { original: "2.00" } }, txid, { IdOwner })).resolves.toMatchObject({ chave, txid, revisao: 1, status: Situacao.Ativa, loc: { tipoCob: TipoCob.imediato } });
-  //   });
+  describe('CREATE', () => {
+    it('success', async () => {
+      const cobr = await ctrl.create(body, { IdOwner });
+      await expect(ctrl.read(cobr.txid, { IdOwner })).resolves.toMatchObject({
+        txid: cobr.txid,
+        status: StatusCobR.Criada,
+      });
+    });
+  });
 
-  //   it('sem mudança de revisão', async () => {
-  //     await ctrl.add({ chave, valor: { original: "1.00" } }, txid, { IdOwner });
-  //     await expect(ctrl.read(txid, { IdOwner })).resolves.toMatchObject({ revisao: 0, status: Situacao.Ativa, loc: { tipoCob: TipoCob.imediato } });
-  //     const { id } = await ctrlLoc.create({ tipoCob: TipoCob.imediato }, { IdOwner });
-  //     await expect(ctrl.edit({ loc: { id } }, txid, { IdOwner })).resolves.not.toThrow();
-  //     await expect(ctrl.read(txid, { IdOwner })).resolves.toMatchObject({ loc: { id, tipoCob: TipoCob.imediato }, revisao: 0, status: Situacao.Ativa });
-  //   });
-  // })
+  describe('READ', () => {
+    it('inexistente', () =>
+      expect(ctrl.read(txid, { IdOwner })).resolves.toBeUndefined());
+  });
 
-  // describe('REMOVE', () => {
-  //   it('success', async () => {
-  //     await ctrl.add({ chave, valor: { original: "1.00" } }, txid, { IdOwner });
-  //     await expect(ctrl.remove(txid, { IdOwner })).resolves.toBeTruthy();
-  //     await expect(ctrl.read(txid, { IdOwner })).resolves.toBeUndefined();
-  //   });
+  describe('EDIT', () => {
+    it('cancelamento', async () => {
+      await ctrl.add(body, txid, { IdOwner });
+      await expect(
+        ctrl.edit({ status: StatusCobR.Cancelada }, txid, { IdOwner }),
+      ).resolves.toMatchObject({
+        status: StatusCobR.Cancelada,
+        atualizacao: [
+          { status: StatusCobR.Criada },
+          { status: StatusCobR.Cancelada },
+        ],
+        encerramento: {
+          cancelamento: { solicitante: 'USUARIO_RECEBEDOR', codigo: 'SLCR' },
+        },
+      });
+    });
 
+    it('cancelamento duplicado', async () => {
+      await ctrl.add(body, txid, { IdOwner });
+      await ctrl.edit({ status: StatusCobR.Cancelada }, txid, { IdOwner });
+      await expect(
+        ctrl.edit({ status: StatusCobR.Cancelada }, txid, { IdOwner }),
+      ).rejects.toBeInstanceOf(OperacaoInvalidaException);
+    });
 
-  // })
+    it('inexistente', () =>
+      expect(
+        ctrl.edit({ status: StatusCobR.Cancelada }, txid, { IdOwner }),
+      ).resolves.toBeUndefined());
+  });
 
-  // describe("LIST", () => {
-  //   const FILL_TEST = 11
-  //   let lsPix: CobPutResponse[] = [];
-  //   beforeEach(async () => {
-  //     lsPix = [];
-  //     for (const c of correntistas) {
-  //       for (let i = 0; i < FILL_TEST; i++) {
-  //         txid = randomUUID().replace(/\-/g, '');
-  //         lsPix.push(await ctrl.add({ chave: c.chave, valor: { original: (Math.floor(Math.random() * 1000) * 1.53).toFixed(2) } }, txid, { IdOwner }));
-  //       }
-  //     }
-  //   })
+  describe('RETENTATIVA', () => {
+    it('success', async () => {
+      await ctrl.add(body, txid, { IdOwner });
+      const res = await ctrl.createRetentativa(txid, amanha(), { IdOwner });
+      expect(res.tentativas).toHaveLength(1);
+      expect(res.tentativas[0]).toMatchObject({
+        dataLiquidacao: amanha(),
+        tipo: TipoTentativa.NaoAgendada,
+        status: StatusTentativa.Solicitada,
+      });
+      expect(res.tentativas[0].endToEndId).toMatch(/^E[a-zA-Z0-9]{31}$/);
+    });
 
-  //   describe('PERIODO', () => {
-  //     let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
+    it('política não permite', async () => {
+      await ctrl.add(
+        { ...body, idRec: 'RN1234567820240115abcdefghijk' },
+        txid,
+        { IdOwner },
+      );
+      await expect(
+        ctrl.createRetentativa(txid, amanha(), { IdOwner }),
+      ).rejects.toBeInstanceOf(OperacaoInvalidaException);
+    });
 
-  //     it('sucesso', async () => await expect(ctrl.list({ IdOwner }, filter)).resolves.not.toThrow());
+    it('limite de retentativas', async () => {
+      await ctrl.add(body, txid, { IdOwner });
+      for (let i = 0; i < 3; i++) {
+        await ctrl.createRetentativa(txid, amanha(), { IdOwner });
+      }
+      await expect(
+        ctrl.createRetentativa(txid, amanha(), { IdOwner }),
+      ).rejects.toBeInstanceOf(OperacaoInvalidaException);
+    });
 
-  //     it('quantidades', async () => {
-  //       const { parametros, cobs } = await ctrl.list({ IdOwner }, filter);
-  //       expect(cobs).toHaveLength(correntistas.length * FILL_TEST);
-  //       expect(parametros).toMatchObject({ paginacao: { quantidadeDePaginas: 1, quantidadeTotalDeItens: correntistas.length * FILL_TEST } });
+    it('data inválida', () =>
+      expect(
+        ctrl.createRetentativa(txid, '2024-02-30', { IdOwner }),
+      ).rejects.toBeInstanceOf(BadRequestException));
 
-  //     });
-  //   })
+    it('inexistente', () =>
+      expect(
+        ctrl.createRetentativa(txid, amanha(), { IdOwner }),
+      ).rejects.toBeInstanceOf(NotFoundException));
+  });
 
-  //   describe('CORRENTISTA - CPF', () => {
-  //     let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cpf: correntistas[1].cpfcnpj };
+  describe('LIST', () => {
+    const inicio = new Date(Date.now() - 86400000).toJSON();
+    const fim = new Date(Date.now() + 86400000).toJSON();
 
-  //     it('sucesso', async () => await expect(ctrl.list({ IdOwner }, filter)).resolves.not.toThrow());
+    it('filtros e paginação', async () => {
+      for (let i = 0; i < 5; i++) {
+        await ctrl.create(body, { IdOwner });
+      }
+      const outro = await ctrl.create(
+        { ...body, idRec: 'RN1234567820240115abcdefghijk' },
+        { IdOwner },
+      );
+      await ctrl.edit({ status: StatusCobR.Cancelada }, outro.txid, {
+        IdOwner,
+      });
 
-  //     it('quantidades', async () => {
-  //       const { parametros, cobs } = await ctrl.list({ IdOwner }, filter);
-  //       expect(cobs).toHaveLength(FILL_TEST);
-  //       expect(parametros).toMatchObject({ paginacao: { quantidadeDePaginas: 1, quantidadeTotalDeItens: FILL_TEST } });
-  //     });
-  //   })
+      await expect(
+        ctrl.list({ IdOwner }, { inicio, fim }),
+      ).resolves.toMatchObject({
+        parametros: { paginacao: { quantidadeTotalDeItens: 6 } },
+      });
+      await expect(
+        ctrl.list({ IdOwner }, { inicio, fim, idRec: body.idRec }),
+      ).resolves.toMatchObject({
+        parametros: { paginacao: { quantidadeTotalDeItens: 5 } },
+      });
+      await expect(
+        ctrl.list({ IdOwner }, { inicio, fim, status: StatusCobR.Cancelada }),
+      ).resolves.toMatchObject({ cobsr: [{ txid: outro.txid }] });
 
-  //   describe('CORRENTISTA - CNPJ', () => {
-  //     let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cnpj: correntistas[0].cpfcnpj };
-
-  //     it('sucesso', async () => await expect(ctrl.list({ IdOwner }, filter)).resolves.not.toThrow());
-
-  //     it('quantidades', async () => {
-  //       const { parametros, cobs } = await ctrl.list({ IdOwner }, filter);
-  //       expect(cobs).toHaveLength(FILL_TEST);
-  //       expect(parametros).toMatchObject({ paginacao: { quantidadeDePaginas: 1, quantidadeTotalDeItens: FILL_TEST } });
-  //     });
-  //   });
-
-  //   describe('CORRENTISTA - CPF INEXISTENTE', () => {
-  //     let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cpf: gerarCPF() };
-
-  //     it('sucesso', async () => await expect(ctrl.list({ IdOwner }, filter)).resolves.not.toThrow());
-
-  //     it('quantidades', async () => {
-  //       const { parametros, cobs } = await ctrl.list({ IdOwner }, filter);
-  //       expect(cobs).toHaveLength(0);
-  //       expect(parametros).toMatchObject({ paginacao: { quantidadeDePaginas: 0, quantidadeTotalDeItens: 0 } });
-  //     });
-  //   });
-
-  //   describe('LOCATION', () => {
-  //     let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
-  //     const QTD_REM = 3;
-  //     beforeEach(async () => {
-  //       for (let i = 0; i < QTD_REM; i++) {
-  //         await ctrlLoc.remove({ id: lsPix[i].loc.id }, { IdOwner });
-  //       }
-  //     })
-
-  //     it('presente', async () => {
-  //       filter.locationPresente = true;
-  //       const { parametros, cobs } = await ctrl.list({ IdOwner }, filter);
-  //       expect(cobs).toHaveLength(correntistas.length * FILL_TEST - QTD_REM);
-  //       expect(parametros).toMatchObject({ paginacao: { quantidadeDePaginas: 1, quantidadeTotalDeItens: correntistas.length * FILL_TEST - QTD_REM } });
-  //     });
-
-  //     it('ausente', async () => {
-  //       filter.locationPresente = false;
-  //       const { parametros, cobs } = await ctrl.list({ IdOwner }, filter);
-  //       expect(cobs).toHaveLength(QTD_REM);
-  //       expect(parametros).toMatchObject({ paginacao: { quantidadeDePaginas: 1, quantidadeTotalDeItens: QTD_REM } });
-  //     });
-  //   })
-
-  //   describe('PAGINAÇÃO', () => {
-  //     let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
-
-
-  //     it('pag:1 | Tam: 5 | 5 itens', async () => {
-  //       filter.paginacao = { itensPorPagina: 5, paginaAtual: 1 }
-  //       const { parametros, cobs } = await ctrl.list({ IdOwner }, filter);
-  //       expect(cobs).toHaveLength(5);
-  //       expect(parametros).toMatchObject({ paginacao: { quantidadeDePaginas: 7, quantidadeTotalDeItens: correntistas.length * FILL_TEST } });
-
-  //     });
-
-  //     it('pag:6 | Tam: 5 | 3 itens', async () => {
-  //       filter.paginacao = { itensPorPagina: 5, paginaAtual: 6 }
-  //       const { parametros, cobs } = await ctrl.list({ IdOwner }, filter);
-  //       expect(cobs).toHaveLength(3);
-  //       expect(parametros).toMatchObject({ paginacao: { quantidadeDePaginas: 7, quantidadeTotalDeItens: correntistas.length * FILL_TEST } });
-  //     });
-  // })
-  // })
+      const pag = await ctrl.list(
+        { IdOwner },
+        { inicio, fim, paginacao: { paginaAtual: 1, itensPorPagina: 4 } },
+      );
+      expect(pag.cobsr).toHaveLength(2);
+      expect(pag.parametros.paginacao).toMatchObject({
+        paginaAtual: 1,
+        itensPorPagina: 4,
+        quantidadeDePaginas: 2,
+        quantidadeTotalDeItens: 6,
+      });
+    });
+  });
 });
