@@ -1,5 +1,4 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor, HttpException, UnauthorizedException, InternalServerErrorException, BadRequestException, NotFoundException } from "@nestjs/common";
-import { randomUUID } from "crypto";
 import { catchError, Observable, tap } from "rxjs";
 import { owners } from './data/db.json'
 import { OperacaoInvalidaException } from './libs/errors';
@@ -101,7 +100,7 @@ export class HttpInterceptor implements NestInterceptor {
             );
         }
         else {
-            return new Observable<any>((subs) => {
+            return new Observable<any>(() => {
 
                 throw new UnauthorizedException(this.ServerErrorTypes[401]())
             });

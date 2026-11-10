@@ -100,7 +100,7 @@ describe('CobController', () => {
     })
 
     describe('PERIODO', () => {
-      let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
+      const filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
 
       it('sucesso', async () => await expect(ctrl.list({ IdOwner }, filter)).resolves.not.toThrow());
 
@@ -113,7 +113,7 @@ describe('CobController', () => {
     })
 
     describe('CORRENTISTA - CPF', () => {
-      let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cpf: correntistas[1].cpfcnpj };
+      const filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cpf: correntistas[1].cpfcnpj };
 
       it('sucesso', async () => await expect(ctrl.list({ IdOwner }, filter)).resolves.not.toThrow());
 
@@ -125,7 +125,7 @@ describe('CobController', () => {
     })
 
     describe('CORRENTISTA - CNPJ', () => {
-      let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cnpj: correntistas[0].cpfcnpj };
+      const filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cnpj: correntistas[0].cpfcnpj };
 
       it('sucesso', async () => await expect(ctrl.list({ IdOwner }, filter)).resolves.not.toThrow());
 
@@ -137,7 +137,7 @@ describe('CobController', () => {
     });
 
     describe('CORRENTISTA - CPF INEXISTENTE', () => {
-      let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cpf: gerarCPF() };
+      const filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cpf: gerarCPF() };
 
       it('sucesso', async () => await expect(ctrl.list({ IdOwner }, filter)).resolves.not.toThrow());
 
@@ -149,7 +149,7 @@ describe('CobController', () => {
     });
 
     describe('LOCATION', () => {
-      let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
+      const filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
       const QTD_REM = 3;
       beforeEach(async () => {
         for (let i = 0; i < QTD_REM; i++) {
@@ -173,7 +173,7 @@ describe('CobController', () => {
     })
 
     describe('PAGINAÇÃO', () => {
-      let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
+      const filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
 
 
       it('pag:1 | Tam: 5 | 5 itens', async () => {

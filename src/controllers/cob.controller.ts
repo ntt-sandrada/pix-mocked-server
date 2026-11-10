@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Headers, HttpCode, Param, Patch, Post, Put, Query, Req, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Param, Patch, Post, Put, Query, UseInterceptors } from '@nestjs/common';
 import { PSP } from '../core/app/psp';
 import { HttpInterceptor } from '../http.interceptor';
 import { CobGetFilter, CobPatchRequest, CobPutRequest } from '../core/app/models/cob';

@@ -38,8 +38,8 @@ describe('CobVController', () => {
   let txid: string;
   let IdOwner: string;
   let chave: string;
-  let valor: CobVValor = { original: "10.00", desconto: { data: (new Date()).toJSON(), valorPerc: "1.00", modalidade: ModalidadeDesconto.ValorDiaUtil }, juros: { modalidade: ModalidadeJurosDiasCorridos.Valor, valorPerc: "1.00" }, multa: { modalidade: ModalidadeMulta.ValorFixo, valorPerc: "1.00" } }
-  let calendario: ValidadeVencimento = { dataDeVencimento: (new Date()).toJSON(), validadeAposVencimento: 1 }
+  const valor: CobVValor = { original: "10.00", desconto: { data: (new Date()).toJSON(), valorPerc: "1.00", modalidade: ModalidadeDesconto.ValorDiaUtil }, juros: { modalidade: ModalidadeJurosDiasCorridos.Valor, valorPerc: "1.00" }, multa: { modalidade: ModalidadeMulta.ValorFixo, valorPerc: "1.00" } }
+  const calendario: ValidadeVencimento = { dataDeVencimento: (new Date()).toJSON(), validadeAposVencimento: 1 }
   beforeEach(async () => {
     txid = randomUUID().replace(/\-/g, '');
     IdOwner = randomUUID();
@@ -94,7 +94,7 @@ describe('CobVController', () => {
     })
 
     describe('PERIODO', () => {
-      let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
+      const filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
 
       it('sucesso', async () => await expect(ctrl.list({ IdOwner }, filter)).resolves.not.toThrow());
 
@@ -107,7 +107,7 @@ describe('CobVController', () => {
     })
 
     describe('CORRENTISTA - CPF', () => {
-      let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cpf: correntistas[1].cpfcnpj };
+      const filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cpf: correntistas[1].cpfcnpj };
 
       it('sucesso', async () => await expect(ctrl.list({ IdOwner }, filter)).resolves.not.toThrow());
 
@@ -119,7 +119,7 @@ describe('CobVController', () => {
     })
 
     describe('CORRENTISTA - CNPJ', () => {
-      let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cnpj: correntistas[0].cpfcnpj };
+      const filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cnpj: correntistas[0].cpfcnpj };
 
       it('sucesso', async () => await expect(ctrl.list({ IdOwner }, filter)).resolves.not.toThrow());
 
@@ -131,7 +131,7 @@ describe('CobVController', () => {
     });
 
     describe('CORRENTISTA - CPF INEXISTENTE', () => {
-      let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cpf: gerarCPF() };
+      const filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON(), cpf: gerarCPF() };
 
       it('sucesso', async () => await expect(ctrl.list({ IdOwner }, filter)).resolves.not.toThrow());
 
@@ -143,7 +143,7 @@ describe('CobVController', () => {
     });
 
     describe('LOCATION', () => {
-      let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
+      const filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
       const QTD_REM = 3;
       beforeEach(async () => {
         for (let i = 0; i < QTD_REM; i++) {
@@ -167,7 +167,7 @@ describe('CobVController', () => {
     })
 
     describe('PAGINAÇÃO', () => {
-      let filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
+      const filter: CobGetFilter = { inicio: flatDate(addDays(new Date(), -1)).toJSON(), fim: flatDate(addDays(new Date(), +1)).toJSON() };
 
 
       it('pag:1 | Tam: 5 | 5 itens', async () => {

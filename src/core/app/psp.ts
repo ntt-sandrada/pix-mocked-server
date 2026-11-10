@@ -41,10 +41,8 @@ export class PSP {
     }
 
     private async joinLocCob(IdOwner: string, txid: string, id: number, tipoCob: TipoCob) {
-        const lc1 = await this.loccob.read(IdOwner, { txid });
         const lc2 = await this.loccob.read(IdOwner, { id });
 
-        const cob = await this.cob.read(IdOwner, { txid })
         const loc = await this.locations.read(IdOwner, { id })
 
         if (lc2) {
