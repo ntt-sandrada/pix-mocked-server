@@ -8,9 +8,13 @@ import { CobRController } from './controllers/cobr.controller';
 
 @Module({
   imports: [],
-  controllers: [CobController, CobVController, CobRController, LocationController, RecController],
+  controllers: [
+    CobController,
+    CobVController,
+    CobRController,
+    LocationController,
+    RecController,
+  ],
   providers: [PSP],
 })
-export class AppModule {
-
-}
+export class AppModule {}
