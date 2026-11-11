@@ -153,7 +153,41 @@ export class PSP {
     return (await this._addCob(itm, TipoCob.imediato)) as CobPutResponse;
   }
 
-  async addCobR(itm: PixRequest<CobRPutRequest>): Promise<CobRPutResponse> {
+  private cobRLocks = new Map<string, Promise<unknown>>();
+
+  private withCobRLock<T>(key: PixKey, fn: () => Promise<T>): Promise<T> {
+    const k = `${key.IdOwner}:${key.txid}`;
+    const run = (this.cobRLocks.get(k) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(fn);
+    this.cobRLocks.set(k, run);
+    return run.finally(() => {
+      if (this.cobRLocks.get(k) === run) {
+        this.cobRLocks.delete(k);
+      }
+    });
+  }
+
+  addCobR(itm: PixRequest<CobRPutRequest>): Promise<CobRPutResponse> {
+    return this.withCobRLock(itm, () => this._addCobR(itm));
+  }
+
+  editCobR(itm: PixRequest<CobRPatchRequest>): Promise<CobRPatchResponse> {
+    return this.withCobRLock(itm, () => this._editCobR(itm));
+  }
+
+  retentativaCobR(
+    key: PixKey,
+    dataLiquidacao: string,
+  ): Promise<CobRGetResponse> {
+    return this.withCobRLock(key, () =>
+      this._retentativaCobR(key, dataLiquidacao),
+    );
+  }
+
+  private async _addCobR(
+    itm: PixRequest<CobRPutRequest>,
+  ): Promise<CobRPutResponse> {
     if (await this.cobR.read(itm.IdOwner, { txid: itm.txid })) {
       throw new OperacaoInvalidaException(
         'O txid informado já está sendo utilizado por outra cobrança.',
@@ -244,7 +278,7 @@ export class PSP {
     };
   }
 
-  async editCobR(
+  private async _editCobR(
     itm: PixRequest<CobRPatchRequest>,
   ): Promise<CobRPatchResponse> {
     const curr = await this.readCobR(itm);
@@ -302,7 +336,7 @@ export class PSP {
     return await this.readCobR(itm);
   }
 
-  async retentativaCobR(
+  private async _retentativaCobR(
     key: PixKey,
     dataLiquidacao: string,
   ): Promise<CobRGetResponse> {
@@ -327,6 +361,20 @@ export class PSP {
     if (retentativas.length >= 3) {
       throw new OperacaoInvalidaException(
         'O limite de retentativas da cobrança foi atingido.',
+      );
+    }
+
+    const hoje = new Date().toJSON().substring(0, 10);
+    const limite = new Date(
+      `${curr.calendario.dataDeVencimento.substring(0, 10)}T00:00:00Z`,
+    );
+    limite.setUTCDate(limite.getUTCDate() + 7);
+    if (
+      dataLiquidacao < hoje ||
+      dataLiquidacao > limite.toJSON().substring(0, 10)
+    ) {
+      throw new OperacaoInvalidaException(
+        'A data de liquidação da retentativa está fora do período permitido.',
       );
     }
 

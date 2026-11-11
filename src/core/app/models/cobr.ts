@@ -12,12 +12,13 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { DadosPessoa, TipoConta, Vencimento } from '../models';
+import { DadosPessoa, TipoConta } from '../models';
 import {
   IsCNPJValid,
   IsCPFValid,
   IsIDRec,
   MinStringNumber,
+  NotPast,
 } from '../../../validators/custom-validators';
 import { PoliticaRetentativa } from './rec';
 
@@ -51,10 +52,21 @@ export enum StatusTentativa {
 /** 	
 Todos os campos que indicam valores monetários obedecem ao pattern \d{1,10}.\d{2}. O separador decimal é o caractere ponto. Não é aplicável utilizar separador de milhar. Exemplos de valores aderentes ao padrão: “1.00”, “123.99”, “123456789.23" */
 export class CobRValor {
+  @IsDefined({ message: SCHEMA_ERROR })
   @IsNotEmpty({ message: SCHEMA_ERROR })
   @IsNumberString({}, { message: SCHEMA_ERROR })
   @MinStringNumber(0.01, { message: 'O campo $$ é zero.' })
   original: string;
+}
+
+export class CobRCalendario {
+  @IsDefined({ message: SCHEMA_ERROR })
+  @IsNotEmpty({ message: SCHEMA_ERROR })
+  @IsDateString({}, { message: SCHEMA_ERROR })
+  @NotPast({
+    message: 'O campo $$ é anterior à data de criação da cobrança.',
+  })
+  dataDeVencimento: string;
 }
 
 export class CobRRecebedor {
@@ -81,8 +93,8 @@ export class CobRPutRequest {
   @IsDefined({ message: OBJECT_SCHEMA_ERROR })
   @IsNotEmptyObject({ nullable: false }, { message: OBJECT_SCHEMA_ERROR })
   @ValidateNested({ message: OBJECT_SCHEMA_ERROR })
-  @Type(() => Vencimento)
-  calendario: Vencimento;
+  @Type(() => CobRCalendario)
+  calendario: CobRCalendario;
 
   @IsDefined({ message: OBJECT_SCHEMA_ERROR })
   @IsNotEmptyObject({ nullable: false }, { message: OBJECT_SCHEMA_ERROR })

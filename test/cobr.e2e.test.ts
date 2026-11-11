@@ -149,6 +149,37 @@ describe('COBR', () => {
           );
       });
 
+      it('Campos obrigatórios ausentes em objetos aninhados', async () => {
+        await put(txid, {
+          ...body,
+          valor: { extra: '1' },
+          calendario: { extra: '1' },
+        })
+          .expect(400)
+          .expect((res) => {
+            const err = JSON.parse(res.text);
+            expect(err.type).toBe(TYPE);
+            expect(err.violacoes.map((v) => v.propriedade)).toEqual(
+              expect.arrayContaining([
+                'cobr.valor.original',
+                'cobr.calendario.dataDeVencimento',
+              ]),
+            );
+          });
+        await request(app.getHttpServer())
+          .get(`/cobr/${txid}`)
+          .set('mocked-token', '123-abc')
+          .expect(404);
+      });
+
+      it('PUTs concorrentes com o mesmo txid criam uma única cobrança', async () => {
+        const res = await Promise.all([
+          put(txid, body),
+          put(txid, { ...body, valor: { original: '200.00' } }),
+        ]);
+        expect(res.map((r) => r.status).sort()).toEqual([201, 400]);
+      });
+
       it('O campo cobr.valor.original é zero.', async () => {
         await put(txid, { ...body, valor: { original: '0.00' } })
           .expect(400)
@@ -632,6 +663,43 @@ describe('COBR', () => {
         .set('mocked-token', '123-abc')
         .expect(200);
       await retentativa(txid, amanha()).expect(400);
+    });
+
+    it('400 data de liquidação no passado', async () => {
+      await put(txid, body).expect(201);
+      await retentativa(txid, ontem())
+        .expect(400)
+        .expect((res) =>
+          expect(JSON.parse(res.text)).toMatchObject({
+            type: TYPE,
+            detail:
+              'A data de liquidação da retentativa está fora do período permitido.',
+          }),
+        );
+    });
+
+    it('400 data de liquidação após 7 dias do vencimento', async () => {
+      await put(txid, body).expect(201);
+      const data = new Date(Date.now() + 9 * 86400000)
+        .toJSON()
+        .substring(0, 10);
+      await retentativa(txid, data).expect(400);
+    });
+
+    it('retentativas concorrentes respeitam o limite', async () => {
+      await put(txid, body).expect(201);
+      await retentativa(txid, amanha()).expect(201);
+      await retentativa(txid, amanha()).expect(201);
+      const res = await Promise.all([
+        retentativa(txid, amanha()),
+        retentativa(txid, amanha()),
+      ]);
+      expect(res.map((r) => r.status).sort()).toEqual([201, 400]);
+      await request(app.getHttpServer())
+        .get(`/cobr/${txid}`)
+        .set('mocked-token', '123-abc')
+        .expect(200)
+        .expect((r) => expect(JSON.parse(r.text).tentativas).toHaveLength(3));
     });
 
     it('400 data inválida', async () => {
