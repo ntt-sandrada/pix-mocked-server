@@ -53,6 +53,11 @@ import { OperacaoInvalidaException } from '../../libs/errors';
 import { PoliticaRetentativa, RecPostRequest, RecRequest } from './models/rec';
 import { owners } from '../../data/db.json';
 
+const ispbNumerico = (ispb?: string) =>
+  /^\d{8}$/.test(ispb || '')
+    ? ispb
+    : String(parseInt(ispb || '0', 16) % 1e8 || 0).padStart(8, '0');
+
 @Injectable()
 export class PSP {
   private cob: MemoryDB;
@@ -760,7 +765,15 @@ export class PSP {
 
     const itm = {
       ...mdl.data,
-      idRec: `R${mdl.data.politicaRetentativa === PoliticaRetentativa.NaoPermite ? 'N' : 'R'}${own.ISPB}${new Date().toJSON().replace(/\D/g, '').substring(0, 8)} `,
+      idRec: [
+        'R',
+        mdl.data.politicaRetentativa === PoliticaRetentativa.NaoPermite
+          ? 'N'
+          : 'R',
+        ispbNumerico(own.ISPB),
+        new Date().toJSON().replace(/\D/g, '').substring(0, 8),
+        randomUUID().replace(/-/g, '').substring(0, 11),
+      ].join(''),
     };
     return await this.rec.add(mdl.IdOwner, itm);
   }

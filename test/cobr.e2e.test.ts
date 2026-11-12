@@ -9,6 +9,11 @@ import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { randomUUID } from 'crypto';
 import { MemoryDB } from '../src/libs/fakedb';
+import { gerarCPF } from '../src/libs/documentos';
+import {
+  PeriodicidadeRecorrencia,
+  PoliticaRetentativa,
+} from '../src/core/app/models/rec';
 
 const amanha = () => new Date(Date.now() + 86400000).toJSON().substring(0, 10);
 const ontem = () => new Date(Date.now() - 86400000).toJSON().substring(0, 10);
@@ -329,6 +334,54 @@ describe('COBR', () => {
             }),
           );
       });
+    });
+  });
+
+  describe('/PUT com idRec gerado por /POST /rec', () => {
+    const pessoa = () => ({
+      cep: '26083190',
+      cidade: 'Nova Iguaçu',
+      logradouro: 'Rua Gemeos',
+      uf: 'RJ',
+      nome: 'Teste da Silva',
+      cpf: gerarCPF(),
+    });
+    const criarRec = (politicaRetentativa: PoliticaRetentativa) =>
+      request(app.getHttpServer())
+        .post('/rec')
+        .send({
+          vinculo: {
+            objeto: 'Pagamento de assinatura de serviço',
+            contrato: novoTxid(),
+            devedor: pessoa(),
+          },
+          ativacao: { dadosJornada: { txid: novoTxid() } },
+          calendario: {
+            dataInicial: new Date().toJSON(),
+            periodicidade: PeriodicidadeRecorrencia.Mensal,
+          },
+          politicaRetentativa,
+          recebedor: pessoa(),
+          valor: { valorRec: '1000.00' },
+        })
+        .set('mocked-token', '123-abc')
+        .expect(201)
+        .then((res) => JSON.parse(res.text).idRec as string);
+
+    it.each([
+      [PoliticaRetentativa.Permite, 'PERMITE_3R_7D'],
+      [PoliticaRetentativa.NaoPermite, 'NAO_PERMITE'],
+    ])('201 %s', async (politica, esperado) => {
+      const idRec = await criarRec(politica);
+      expect(idRec).toMatch(/^R[RN][0-9]{8}[0-9]{8}[a-zA-Z0-9]{11}$/);
+      await put(txid, { ...body, idRec })
+        .expect(201)
+        .expect((res) =>
+          expect(JSON.parse(res.text)).toMatchObject({
+            idRec,
+            politicaRetentativa: esperado,
+          }),
+        );
     });
   });
 
